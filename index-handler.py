@@ -28,6 +28,9 @@ class ExcelDataExtractor:
         code_idx, label_idx = header.index('code'), header.index('label')
         uid_counts = {}
         
+        # Check if 'cpl' column exists in header
+        cpl_exists = 'cpl' in header
+        
         for row in selected_sheet.iter_rows(min_row=2, values_only=True):
             code, label = row[code_idx], row[label_idx]
             if code is not None and label is not None:
@@ -40,6 +43,16 @@ class ExcelDataExtractor:
                     "properties": {header[i]: row[i] for i in range(len(header)) if row[i] is not None and i not in {code_idx, label_idx}},
                     "restrictions": {}
                 }
+                
+                # Add 'cpl' to 'restrictions' if it exists in header
+                if cpl_exists:
+                    cpl_idx = header.index('cpl')
+                    json_object["restrictions"]["cpl"] = bool(row[cpl_idx])
+                    
+                    # Remove 'cpl' from 'properties' if it was added mistakenly
+                    if 'cpl' in json_object["properties"]:
+                        del json_object["properties"]["cpl"]
+
                 json_objects[uid] = json_object
 
         if json_objects:
@@ -135,7 +148,7 @@ class MenuHandler:
 
     @staticmethod
     def display_tab_options(tab_name):
-        print(f"\nTab Menu:\n1. View Cell Value\n2. Extract and Convert to JSON\n3. Compare with CPL\n4. Compare with Harvey\n5. AM Best to JSON\n0. Back to Main Menu")
+        print(f"\nTab Menu:\n1. View Cell Value\n2. Extract and Convert to JSON\n3. Compare with CPL\n4. AM Best to JSON\n0. Back to Main Menu")
         return input("Enter your choice: ")
 
     @staticmethod
@@ -197,107 +210,6 @@ class MenuHandler:
             print("Invalid tab selection for comparison. Please try again.")
 
 
-    @staticmethod
-    def compare_with_harvey(excel_data_extractor, selected_sheet, json_file_name):
-        MenuHandler.display_tab_menu(excel_data_extractor.workbook.sheetnames)
-        harvey_tab_choice = int(input("Select a tab for Harvey-Cleary comparison (enter the corresponding number): ")) - 1
-        try:
-            harvey_sheet = excel_data_extractor.get_selected_sheet(harvey_tab_choice)
-            non_empty_rows, non_empty_columns = excel_data_extractor.count_non_empty_rows_and_columns(harvey_sheet)
-            print(f"\nNumber of non-empty rows in '{harvey_sheet.title}': {non_empty_rows}")
-            print(f"Number of non-empty columns in '{harvey_sheet.title}': {len(non_empty_columns)}")
-            MenuHandler.display_column_names(harvey_sheet)
-            
-            # Get column index where codes are stored in Harvey-Cleary index
-            harvey_code_column_index = int(input("Enter the column index where codes are stored in Harvey-Cleary index (enter the corresponding number): ")) - 1
-            
-            # Format codes from Harvey-Cleary index
-            harvey_formatted_codes = [re.sub(r'[^a-zA-Z0-9]', '', code).lower() for code in ExcelDataExtractor.format_codes_in_column(harvey_sheet, harvey_code_column_index)]
-
-            # Get the list of codes extracted from JSON
-            extracted_codes = set(excel_data_extractor.uids)
-
-            # Find matches between extracted codes and Harvey-Cleary codes
-            matches = extracted_codes.intersection(harvey_formatted_codes)
-
-            print(f"\nNumber of matches with Harvey-Cleary index: {len(matches)}")
-
-            # Update JSON data for matching codes
-            with open(json_file_name, "r") as json_file:
-                json_data = json.load(json_file)
-
-            updated_count = 0
-            not_updated_codes = []  # Initialize list to store codes not updated
-
-            for code in matches:
-                if code in json_data:
-                    # Initialize 'harvey' key and its nested structure if not present
-                    if 'harvey' not in json_data[code]['restrictions']:
-                        json_data[code]['restrictions']['harvey'] = {}
-
-                    # Initialize variables to track operations values from different columns
-                    ongoing_only = None
-                    completed_only = None
-                    ongoing_completed = None
-                    not_acceptable = None
-                    comments_value = None
-
-                    for i, col_name in enumerate(harvey_sheet[1], 1):
-                        if col_name.value is not None:
-                            cell_value = harvey_sheet.cell(row=harvey_formatted_codes.index(code) + 2, column=i).value
-                            if col_name.value.lower() == "ongoing ops only":
-                                ongoing_only = cell_value
-                            elif col_name.value.lower() == "completed ops only":
-                                completed_only = cell_value
-                            elif col_name.value.lower() == "ongoing + completed":
-                                ongoing_completed = cell_value
-                            elif col_name.value.lower() == "not acceptable (ongoing & completed)":
-                                not_acceptable = cell_value
-                            elif col_name.value.lower() == "comments":
-                                comments_value = cell_value
-
-                    # Determine the value for "operations" field based on the conditions
-                    if not_acceptable:
-                        operations_value = "none"
-                    elif ongoing_completed:
-                        operations_value = "both"
-                    elif ongoing_only and completed_only:
-                        operations_value = "both"
-                    elif ongoing_only:
-                        operations_value = "ongoing"
-                    elif completed_only:
-                        operations_value = "completed"
-                    else:
-                        operations_value = "none"
-
-                    # Populate 'operations' field in JSON data
-                    json_data[code]['restrictions']['harvey']['operations'] = operations_value
-
-                    # Populate 'comments' field in JSON data
-                    if comments_value:
-                        json_data[code]['restrictions']['harvey']['comments'] = comments_value
-
-                    # Check for any changes made
-                    if operations_value != json_data[code]['restrictions']['harvey'].get('operations'):
-                        updated_count += 1
-                    else:
-                        not_updated_codes.append(code)  # Add code to the list of not updated codes
-
-            # Save updated JSON data back to file
-            with open(json_file_name, "w") as json_file:
-                json.dump(json_data, json_file, indent=2)
-
-            print(f"\n{updated_count} JSON objects updated with Harvey-Cleary information.")
-            
-            if not_updated_codes:
-                print("\nCodes that matched but were not updated:")
-                for code in not_updated_codes:
-                    print(code)
-
-        except IndexError:
-            print("Invalid tab selection for Harvey-Cleary comparison. Please try again.")
-
-
 def main():
     excel_data_extractor = ExcelDataExtractor('index.xlsx')
     json_file_name = None
@@ -336,11 +248,6 @@ def main():
                         else:
                             print("No JSON file generated yet. Please choose option 2 first.")
                     elif choice == '4':
-                        if json_file_name:
-                            MenuHandler.compare_with_harvey(excel_data_extractor, selected_sheet, json_file_name)
-                        else:
-                            print("No JSON file generated yet. Please choose option 2 first.")
-                    elif choice == '5':
                         if selected_sheet:
                             MenuHandler.extract_am_best_to_json(excel_data_extractor, selected_sheet)
                         else:
