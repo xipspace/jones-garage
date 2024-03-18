@@ -3,6 +3,8 @@ import os
 import re
 import openpyxl
 
+from datetime import datetime
+
 # file handler
 
 def select_item(items, item_type):
@@ -91,7 +93,9 @@ def extract_data(workbook, sheet_name):
         header_row = [cell.value.lower() for cell in sheet[1] if cell.value]
         
         # Find the indices of 'code' and 'label' headers
-        code_index, label_index = header_row.index('code'), header_row.index('label')
+        code_index, label_index = header_row.index("code"), header_row.index("label")
+        
+        is_cpl = "cpl" in header_row
         
         # Iterate over rows starting from the second row
         counter = 0
@@ -117,6 +121,14 @@ def extract_data(workbook, sheet_name):
                     "properties": { header_row[i]: row[i] for i in range(len(row)) if i not in {code_index, label_index} and row[i] is not None },
                     "restrictions": {}
                 }
+                
+                if is_cpl:
+                    cpl_index = header_row.index('cpl')
+                    json_content["restrictions"]["cpl"] = bool(row[cpl_index])
+                    
+                    # Remove 'cpl' from 'properties' if it was added mistakenly
+                    if 'cpl' in json_content["properties"]:
+                        del json_content["properties"]["cpl"]
                 # print(uid)
                 json_data[uid] = json_content
                 counter += 1
@@ -173,6 +185,8 @@ def extract_cpl(json_data, json_file, workbook):
 
     except Exception as e:
         print(f"Error occurred while extracting and processing data: {e}")
+
+
 
 
 
@@ -358,6 +372,8 @@ def load_json(file_name):
 
 
 
+
+
 def show_menu():
     print("Menu:")
     print("1. Excel Selector")
@@ -376,8 +392,9 @@ def main():
     while True:
         show_menu()
         choice = input("Enter your choice: ")
+
         if choice == "1":
-            excel_file = list_files('xlsx')
+            excel_file = list_files("xlsx")
             if excel_file:
                 workbook = open_workbook(excel_file)
                 if workbook:
@@ -388,34 +405,40 @@ def main():
                 print("No Excel data.")
 
             # excel_index = list_headers(workbook, excel_sheet)
+
         elif choice == "2":
             if workbook and excel_sheet:
                 json_data, json_file = extract_data(workbook, excel_sheet)
             else:
                 print("Missing references.")
+
         elif choice == "3":
             if json_data and json_file and workbook:
                 extract_cpl(json_data, json_file, workbook)
             else:
                 print("Missing references.")
             # json_data = extract_cpl(json_data, json_file, workbook)
+
         elif choice == "4":
             json_file = list_files('json')
             if json_file:
                 json_data = load_json(json_file)
             else:
                 print("No JSON data.")
+
         elif choice == "5":
             if json_data and json_file:
                 json_data = json_merge_ops(json_data, json_file)
                 json_data = json_update_aggregate(json_data, json_file)
             else:
                 print("No JSON data")
+
         elif choice == "6":
             if json_data and json_file:
                 json_data = json_update_blanket(json_data, json_file)
             else:
                 print("No JSON data")
+
         elif choice == "0":
             print("Exiting...")
             if workbook:
