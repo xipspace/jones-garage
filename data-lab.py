@@ -326,15 +326,72 @@ def json_update_blanket(data, filename):
         return None
 
 
-# fix blanket
-
 # extract x days notice of cancellation
-# read label
-# turn noc into string
+
+def extract_notice(data, filename):
+    try:
+        counter = 0
+        
+        for key, value in data.items():
+            label = value.get("label", "").lower()
+            # Search text in the label to validate update
+            match = re.search(r'(\d+)\s*days', label)
+            if match:
+                days = match.group(1)
+                properties = value.get('properties', {})
+                properties['noc'] = days
+                counter += 1
+            elif 'days' in label:
+                # Check if "days" is present but no number is found before it
+                properties = value.get('properties', {})
+                properties['noc'] = 'invalid'
+                counter += 1
+            else:
+                properties = value.get('properties', {})
+                properties['noc'] = 'none'
+                counter += 1
+            
+        print(f"{counter} objects updated")
+        
+        with open(filename, 'w') as file:
+            json.dump(data, file, indent=2)
+        
+        return data
+        
+    except Exception as e:
+        print(f"Error occurred while updating JSON file: {e}")
+        return None
+
+
 
 # remove none values
 
 
+
+def clear_none(data, filename):
+    try:
+        counter = 0
+        
+        for key, value in data.items():
+            label = value.get("label", "").lower()
+            # Search text in the label to validate update
+            if "properties" in value:
+                properties = value["properties"]
+                keys_to_remove = [key for key, value in properties.items() if value == "none"]
+                for key in keys_to_remove:
+                    del properties[key]
+                    counter += 1
+            
+        print(f"{counter} objects updated")
+        
+        with open(filename, 'w') as file:
+            json.dump(data, file, indent=2)
+        
+        return data
+        
+    except Exception as e:
+        print(f"Error occurred while updating JSON file: {e}")
+        return None
 
 
 
@@ -382,6 +439,8 @@ def show_menu():
     print("4. JSON Selector")
     print("5. Fix Operations & Aggregate")
     print("6. Fix Blanket AI")
+    print("7. Fix NoC days")
+    print("9. Clear None")
     print("0. Quit")
 
 def main():
@@ -436,6 +495,20 @@ def main():
         elif choice == "6":
             if json_data and json_file:
                 json_data = json_update_blanket(json_data, json_file)
+            else:
+                print("No JSON data")
+                
+        
+        elif choice == "7":
+            if json_data and json_file:
+                json_data = extract_notice(json_data, json_file)
+            else:
+                print("No JSON data")
+                
+        
+        elif choice == "9":
+            if json_data and json_file:
+                json_data = clear_none(json_data, json_file)
             else:
                 print("No JSON data")
 
