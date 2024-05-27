@@ -29,14 +29,25 @@ def find_valid_pdfs():
 
     return pdf_files
 
+def transform_filename(filename):
+    # Convert to lowercase
+    filename = filename.lower()
+    # Replace multiple spaces with a single space
+    filename = re.sub(r'\s+', ' ', filename)
+    # Replace spaces with underscores
+    filename = filename.replace(' ', '_')
+    return filename
+
 def generate_default_output_folder(input_pdf):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     input_filename = os.path.splitext(os.path.basename(input_pdf))[0]
+    input_filename = transform_filename(input_filename)
     return os.path.join(os.path.dirname(input_pdf), f"{timestamp}_{input_filename}")
 
 def split_pdf(input_pdf, output_folder):
     pdf_reader = PdfReader(input_pdf)
     input_filename = os.path.splitext(os.path.basename(input_pdf))[0]
+    input_filename = transform_filename(input_filename)
     os.makedirs(output_folder, exist_ok=True)
 
     num_pages = len(pdf_reader.pages)
